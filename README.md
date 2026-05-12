@@ -1,5 +1,5 @@
 # Peer-to-Peer Cloud Computing System!
- System
+
 
 A lightweight and secure peer-to-peer file sharing platform developed using Python and Flask.  
 This project focuses on secure communication between distributed peers while maintaining file privacy, authentication, and basic intrusion detection capabilities.
