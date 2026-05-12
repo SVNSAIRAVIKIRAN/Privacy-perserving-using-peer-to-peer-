@@ -1,0 +1,402 @@
+{% extends "base.html" %}
+{% block title %}Peer Network — {{ username }}{% endblock %}
+{% block content %}
+<style>
+  .layout { display:grid; grid-template-columns:260px 1fr; gap:1rem; padding:1rem; min-height:calc(100vh - 60px); }
+  @media(max-width:820px){ .layout { grid-template-columns:1fr; } }
+  .sidebar { display:flex; flex-direction:column; gap:0.75rem; }
+  .main    { display:flex; flex-direction:column; gap:0.75rem; }
+
+  .id-card { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:1rem; position:relative; overflow:hidden; }
+  .id-card::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; background:linear-gradient(90deg,var(--blue),var(--green)); }
+  .avatar { width:44px; height:44px; border-radius:50%; background:linear-gradient(135deg,var(--blue),var(--accent)); display:flex; align-items:center; justify-content:center; font-family:'Orbitron',monospace; font-size:1rem; font-weight:900; color:#fff; margin-bottom:0.6rem; }
+  .id-name { font-family:'Orbitron',monospace; font-size:0.85rem; color:#fff; font-weight:700; }
+  .id-anon { font-family:'Share Tech Mono',monospace; font-size:0.55rem; color:var(--muted); margin-top:3px; word-break:break-all; }
+  .id-status { display:inline-flex; align-items:center; gap:5px; margin-top:6px; font-family:'Share Tech Mono',monospace; font-size:0.6rem; color:var(--green); }
+  .sdot { width:6px; height:6px; border-radius:50%; background:var(--green); box-shadow:0 0 6px var(--green); animation:pulse 1.5s infinite; }
+
+  .pipeline { background:var(--panel); border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+  .pipeline-head { padding:0.5rem 0.75rem; border-bottom:1px solid var(--border); font-family:'Share Tech Mono',monospace; font-size:0.62rem; color:var(--accent); letter-spacing:0.1em; text-transform:uppercase; }
+  .step-list { padding:0.4rem 0.6rem; display:flex; flex-direction:column; gap:3px; }
+  .step-item { display:flex; align-items:center; gap:7px; padding:5px 7px; border-radius:4px; border:1px solid var(--border); background:rgba(0,0,0,0.2); transition:all 0.4s; }
+  .step-item.active { border-color:rgba(0,255,153,0.4); background:rgba(0,255,153,0.06); animation: stepPulse 1.2s ease infinite; }
+  .step-item.done   { border-color:rgba(0,255,153,0.25); background:rgba(0,255,153,0.03); }
+  @keyframes stepPulse { 0%,100%{box-shadow:none} 50%{box-shadow:0 0 8px rgba(0,255,153,0.2)} }
+  .step-num  { font-family:'Orbitron',monospace; font-size:0.58rem; font-weight:700; color:var(--muted); width:16px; text-align:center; flex-shrink:0; transition:color 0.4s; }
+  .step-item.active .step-num,.step-item.done .step-num { color:var(--green); }
+  .step-name { font-family:'Share Tech Mono',monospace; font-size:0.62rem; color:var(--muted); flex:1; transition:color 0.4s; }
+  .step-item.active .step-name { color:var(--green); }
+  .step-item.done  .step-name  { color:#7adfb0; }
+  .step-icon { font-size:0.7rem; flex-shrink:0; opacity:0; transition:opacity 0.4s; }
+  .step-item.active .step-icon,.step-item.done .step-icon { opacity:1; }
+
+  .pbox  { background:var(--panel); border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+  .phead { padding:0.55rem 0.85rem; border-bottom:1px solid var(--border); font-family:'Share Tech Mono',monospace; font-size:0.62rem; color:var(--accent); letter-spacing:0.08em; text-transform:uppercase; display:flex; justify-content:space-between; align-items:center; }
+  .pbody { padding:0.65rem; }
+
+  .cnt-badge { font-family:'Orbitron',monospace; font-size:0.68rem; font-weight:700; color:var(--green); background:rgba(0,255,153,0.1); border:1px solid rgba(0,255,153,0.25); border-radius:3px; padding:1px 6px; }
+  .new-badge { font-family:'Share Tech Mono',monospace; font-size:0.58rem; color:var(--warn); animation:pulse 1s infinite; }
+  .empty     { font-family:'Share Tech Mono',monospace; font-size:0.65rem; color:var(--muted); padding:0.65rem; text-align:center; }
+
+  .connect-row { display:flex; gap:8px; align-items:center; }
+  .peer-select  { flex:1; background:rgba(0,0,0,0.4); border:1px solid var(--border); border-radius:4px; padding:8px 10px; color:var(--text); font-family:'Share Tech Mono',monospace; font-size:0.75rem; outline:none; }
+  .peer-select:focus { border-color:var(--accent); }
+
+  .peer-item { display:flex; align-items:center; gap:8px; padding:7px 9px; border-radius:5px; border:1px solid transparent; margin-bottom:3px; }
+  .pdot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+  .pdot.online  { background:var(--green); box-shadow:0 0 5px var(--green); }
+  .pdot.offline { background:var(--muted); }
+  .pname { font-family:'Share Tech Mono',monospace; font-size:0.72rem; color:var(--text); flex:1; }
+  .panon { font-family:'Share Tech Mono',monospace; font-size:0.55rem; color:var(--muted); }
+
+  .req-item { display:flex; align-items:center; gap:8px; padding:9px 10px; border-radius:6px; border:1px solid rgba(0,212,255,0.2); background:rgba(0,212,255,0.04); margin-bottom:5px; animation:fadeIn 0.3s ease; }
+  .req-info { flex:1; }
+  .req-from { font-family:'Orbitron',monospace; font-size:0.68rem; color:var(--accent); }
+  .req-anon { font-family:'Share Tech Mono',monospace; font-size:0.55rem; color:var(--muted); margin-top:2px; }
+  .req-time { font-family:'Share Tech Mono',monospace; font-size:0.53rem; color:var(--muted); }
+  .req-btns { display:flex; gap:4px; flex-shrink:0; }
+
+  .sess-item { padding:9px 10px; border-radius:6px; border:1px solid rgba(0,255,153,0.2); background:rgba(0,255,153,0.04); margin-bottom:5px; animation:fadeIn 0.3s ease; }
+  .sess-top  { display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; }
+  .sess-peers { font-family:'Orbitron',monospace; font-size:0.68rem; color:var(--green); }
+  .sess-time  { font-family:'Share Tech Mono',monospace; font-size:0.53rem; color:var(--muted); }
+  .sess-key   { font-family:'Share Tech Mono',monospace; font-size:0.55rem; color:var(--muted); margin-top:2px; }
+  .sess-actions { display:flex; gap:4px; margin-top:6px; }
+
+  .msg-area  { background:#020508; border:1px solid var(--border); border-radius:5px; padding:0.6rem; max-height:160px; overflow-y:auto; margin-bottom:0.5rem; font-family:'Share Tech Mono',monospace; font-size:0.7rem; line-height:1.8; }
+  .msg-me    { color:var(--green); }
+  .msg-other { color:var(--accent); }
+  .msg-meta  { color:var(--muted); font-size:0.6rem; }
+  .msg-input-row { display:flex; gap:6px; }
+  .msg-input { flex:1; background:rgba(0,0,0,0.4); border:1px solid var(--border); border-radius:4px; padding:7px 10px; color:var(--text); font-family:'Share Tech Mono',monospace; font-size:0.75rem; outline:none; }
+  .msg-input:focus { border-color:var(--accent); }
+
+  .file-upload-area { border:2px dashed var(--border); border-radius:6px; padding:1.25rem; text-align:center; cursor:pointer; transition:border-color 0.2s; margin-bottom:0.65rem; }
+  .file-upload-area:hover,.file-upload-area.drag { border-color:var(--accent); background:rgba(0,212,255,0.03); }
+  .file-upload-area p { font-family:'Share Tech Mono',monospace; font-size:0.68rem; color:var(--muted); margin-top:6px; }
+  .file-item { display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:5px; border:1px solid var(--border); background:rgba(0,0,0,0.2); margin-bottom:4px; animation:fadeIn 0.3s ease; }
+  .file-icon { font-size:1.1rem; flex-shrink:0; }
+  .file-info { flex:1; min-width:0; }
+  .file-name { font-family:'Share Tech Mono',monospace; font-size:0.68rem; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .file-meta { font-family:'Share Tech Mono',monospace; font-size:0.55rem; color:var(--muted); margin-top:2px; }
+  .file-hash { font-family:'Share Tech Mono',monospace; font-size:0.52rem; color:rgba(0,255,153,0.5); margin-top:1px; }
+  .uploader-tag { font-family:'Share Tech Mono',monospace; font-size:0.55rem; color:var(--accent); background:rgba(0,212,255,0.08); border:1px solid rgba(0,212,255,0.2); border-radius:3px; padding:1px 5px; flex-shrink:0; }
+
+  .feed { background:#020508; border:1px solid var(--border); border-radius:5px; padding:0.6rem 0.85rem; font-family:'Share Tech Mono',monospace; font-size:0.65rem; line-height:1.9; max-height:140px; overflow-y:auto; }
+  .fl { display:flex; gap:7px; }
+  .ft { color:var(--muted); flex-shrink:0; }
+  .fm.success { color:var(--green); }
+  .fm.info    { color:var(--accent); }
+  .fm.warning { color:#ffd700; }
+  .fm.error   { color:var(--warn); }
+
+  .progress-wrap { background:rgba(0,0,0,0.3); border-radius:3px; height:4px; margin-top:6px; overflow:hidden; display:none; }
+  .progress-bar  { height:100%; background:var(--green); border-radius:3px; transition:width 0.3s; width:0%; }
+  .ctrl-row { display:flex; gap:8px; align-items:center; margin-bottom:0.5rem; }
+  .ctrl-row label { font-family:'Share Tech Mono',monospace; font-size:0.62rem; color:var(--muted); white-space:nowrap; }
+</style>
+
+<div class="layout" id="mainLayout"
+     data-hub="{{ hub_url }}"
+     data-username="{{ username }}"
+     data-port="{{ peer_port }}"
+     data-hb="{{ heartbeat_interval }}">
+
+  <div class="sidebar">
+    <div class="id-card">
+      <div class="avatar">{{ username[0].upper() }}</div>
+      <div class="id-name">{{ username }}</div>
+      <div class="id-anon">AID: {{ anonymous_id[:32] }}...</div>
+      <div class="id-status"><span class="sdot"></span>ONLINE IN NETWORK</div>
+    </div>
+
+    <div class="pipeline">
+      <div class="pipeline-head">AUTHENTICATION PIPELINE</div>
+      <div class="step-list">
+        <div class="step-item done" data-step="1"><span class="step-num">01</span><span class="step-name">USER REGISTRATION</span><span class="step-icon">✓</span></div>
+        <div class="step-item done" data-step="2"><span class="step-num">02</span><span class="step-name">PEER LOGIN</span><span class="step-icon">✓</span></div>
+        <div class="step-item done" data-step="3"><span class="step-num">03</span><span class="step-name">ANONYMOUS IDENTITY</span><span class="step-icon">✓</span></div>
+        <div class="step-item done" data-step="4"><span class="step-num">04</span><span class="step-name">PEER DISCOVERY</span><span class="step-icon">✓</span></div>
+        <div class="step-item" data-step="5"><span class="step-num">05</span><span class="step-name">CONNECTION REQUEST</span><span class="step-icon">○</span></div>
+        <div class="step-item" data-step="6"><span class="step-num">06</span><span class="step-name">AUTH ENGINE VERIFY</span><span class="step-icon">○</span></div>
+        <div class="step-item" data-step="7"><span class="step-num">07</span><span class="step-name">TOKEN VALIDATION</span><span class="step-icon">○</span></div>
+        <div class="step-item" data-step="8"><span class="step-num">08</span><span class="step-name">SESSION KEY CREATION</span><span class="step-icon">○</span></div>
+        <div class="step-item" data-step="9"><span class="step-num">09</span><span class="step-name">P2P COMMUNICATION</span><span class="step-icon">○</span></div>
+      </div>
+    </div>
+
+    <div class="pbox">
+      <div class="phead">ONLINE PEERS <span class="cnt-badge" id="peerCnt">0</span></div>
+      <div class="pbody" id="peerList"><div class="empty">Scanning network...</div></div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div id="topAlert" class="alert"></div>
+
+    <div class="pbox">
+      <div class="phead">STEP 5 — SEND CONNECTION REQUEST</div>
+      <div class="pbody">
+        <div class="connect-row">
+          <select class="peer-select" id="connectTarget"><option value="">— select peer —</option></select>
+          <button class="btn btn-solid" style="padding:8px 20px;font-size:0.65rem;white-space:nowrap" onclick="sendConnectRequest()">SEND REQUEST</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="pbox">
+      <div class="phead">INCOMING REQUESTS <span class="new-badge" id="newBadge" style="display:none">NEW</span></div>
+      <div class="pbody" id="reqList"><div class="empty">No pending requests.</div></div>
+    </div>
+
+    <div class="pbox">
+      <div class="phead">STEPS 6–8 — AUTHENTICATED SESSIONS <span class="cnt-badge" id="sessCnt">0</span></div>
+      <div class="pbody" id="sessList"><div class="empty">No sessions yet.</div></div>
+    </div>
+
+    <div class="pbox">
+      <div class="phead">STEP 9 — P2P MESSAGES</div>
+      <div class="pbody">
+        <div class="ctrl-row">
+          <label>PEER:</label>
+          <select class="peer-select" id="msgTarget" style="font-size:0.7rem;padding:5px 8px" onchange="renderMessages()"><option value="">— select peer —</option></select>
+        </div>
+        <div class="msg-area" id="msgArea"><div style="color:var(--muted);font-size:0.65rem">No messages yet.</div></div>
+        <div class="msg-input-row">
+          <input type="text" class="msg-input" id="msgInput" placeholder="Type a message..." maxlength="4096" onkeydown="if(event.key==='Enter')sendMessage()">
+          <button class="btn btn-green" style="padding:7px 14px;font-size:0.62rem" onclick="sendMessage()">SEND</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="pbox">
+      <div class="phead">STEP 9 — AES-256-GCM FILE TRANSFER</div>
+      <div class="pbody">
+        <div class="ctrl-row">
+          <label>SESSION:</label>
+          <select class="peer-select" id="sessSelector" style="font-size:0.7rem;padding:5px 8px"><option value="">— select session —</option></select>
+        </div>
+        <div class="file-upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()"
+             ondragover="event.preventDefault();this.classList.add('drag')"
+             ondragleave="this.classList.remove('drag')"
+             ondrop="handleDrop(event)">
+          <div style="font-size:2rem">📄</div>
+          <p>Click or drag file · AES-256-GCM encrypted · max 10 MB · requires active session</p>
+          <div class="progress-wrap" id="progressWrap"><div class="progress-bar" id="progressBar"></div></div>
+        </div>
+        <input type="file" id="fileInput" style="display:none" onchange="uploadFile(this.files[0])">
+        <div style="font-family:'Share Tech Mono',monospace;font-size:0.62rem;color:var(--muted);margin-bottom:0.5rem">SHARED FILES</div>
+        <div id="fileList"><div class="empty">No files shared yet.</div></div>
+      </div>
+    </div>
+
+    <div class="pbox">
+      <div class="phead">ACTIVITY FEED</div>
+      <div class="pbody" style="padding:0.4rem">
+        <div class="feed" id="feed">
+          <div class="fl"><span class="ft">--:--:--</span><span class="fm info">Dashboard ready — steps 1–4 complete.</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+var layout = document.getElementById('mainLayout');
+var ME     = layout.dataset.username;
+var HUB    = layout.dataset.hub;
+var HB_MS  = parseInt(layout.dataset.hb) || 15000;
+
+var es             = null;
+var completedSteps = [1,2,3,4];
+var activeSessions = [];
+var allMessages    = [];
+
+function markStep(num, active) {
+  var el = document.querySelector('.step-item[data-step="'+num+'"]');
+  if (!el) return;
+  if (active) {
+    if (el.classList.contains('done')) return; // never downgrade a done step
+    el.classList.add('active');
+    el.classList.remove('done');
+    el.querySelector('.step-icon').textContent = '●';
+  } else {
+    el.classList.remove('active');
+    el.classList.add('done');
+    el.querySelector('.step-icon').textContent = '✓';
+    if (completedSteps.indexOf(num) === -1) completedSteps.push(num);
+  }
+}
+
+function startSSE() {
+  if (es) es.close();
+  es = new EventSource(HUB+'/hub/stream?username='+encodeURIComponent(ME));
+  es.addEventListener('peers',      function(e){ renderPeers(JSON.parse(e.data)); });
+  es.addEventListener('req_update', function(e){ var d=JSON.parse(e.data); if(d.to_user===ME) renderRequests(d.requests); });
+  es.addEventListener('monitor', function(e){
+    var d=JSON.parse(e.data);
+    addFeed(d.time.length>8?d.time.slice(11):d.time,'['+d.step+'] '+d.event+': '+d.detail,d.level);
+    if (d.step >= 5 && d.step <= 9) {
+      if (d.level === 'success') {
+        markStep(d.step, false);
+      } else if (d.level === 'info' || d.level === 'warning') {
+        markStep(d.step, true);
+      }
+    }
+  });
+  es.addEventListener('session', function(e){
+    var s=JSON.parse(e.data);
+    if(s.peerA===ME||s.peerB===ME){ markStep(8,false); markStep(9,false); loadSessions(); addFeed(now(),'SECURE SESSION with '+(s.peerA===ME?s.peerB:s.peerA)+' established!','success'); }
+  });
+  es.addEventListener('message', function(e){
+    var m=JSON.parse(e.data);
+    if(m.to_user===ME||m.from_user===ME){ allMessages.push(m); renderMessages(); }
+  });
+  es.addEventListener('file_shared', function(e){ var f=JSON.parse(e.data); addFeed(now(),'[9] File: '+f.filename+' by '+f.uploader,'success'); loadFiles(); });
+  es.onerror = function(){ es.close(); setTimeout(startSSE,3000); };
+}
+
+function renderPeers(peers) {
+  var others = peers.filter(function(p){ return p.username!==ME&&p.status==='online'; });
+  document.getElementById('peerCnt').textContent = others.length;
+  document.getElementById('peerList').innerHTML = others.length
+    ? others.map(function(p){ return '<div class="peer-item"><span class="pdot online"></span><div><div class="pname">'+p.username+'</div><div class="panon">'+p.anonymous_id.slice(0,18)+'...</div></div></div>'; }).join('')
+    : '<div class="empty">No other peers online.</div>';
+  var sel=document.getElementById('connectTarget'), cur=sel.value;
+  sel.innerHTML='<option value="">— select peer —</option>';
+  others.forEach(function(p){ var o=document.createElement('option'); o.value=p.username; o.textContent=p.username; sel.appendChild(o); });
+  if(cur) sel.value=cur;
+}
+
+function renderRequests(reqs) {
+  document.getElementById('newBadge').style.display = reqs.length?'inline':'none';
+  var list=document.getElementById('reqList');
+  if(!reqs.length){ list.innerHTML='<div class="empty">No pending requests.</div>'; return; }
+  if(completedSteps.indexOf(5)===-1) markStep(5,true);
+  list.innerHTML=reqs.map(function(r){
+    return '<div class="req-item"><div class="req-info"><div class="req-from">'+r.from_user+' wants to connect</div><div class="req-anon">AID: '+r.from_anon.slice(0,22)+'...</div><div class="req-time">'+r.timestamp+'</div></div><div class="req-btns"><button class="btn btn-green" style="padding:4px 10px;font-size:0.58rem" onclick="respond(\''+r.id+'\',\'accept\')">ACCEPT</button><button class="btn btn-warn" style="padding:4px 10px;font-size:0.58rem" onclick="respond(\''+r.id+'\',\'reject\')">REJECT</button></div></div>';
+  }).join('');
+}
+
+function loadSessions() {
+  fetch('/api/sessions').then(function(r){return r.json();}).then(function(sess){
+    activeSessions=sess;
+    document.getElementById('sessCnt').textContent=sess.length;
+    var ss=document.getElementById('sessSelector'), sc=ss.value;
+    ss.innerHTML='<option value="">— select session —</option>';
+    sess.forEach(function(s){ var other=s.peerA===ME?s.peerB:s.peerA; var o=document.createElement('option'); o.value=s.session_id; o.textContent='↔ '+other+' ('+s.session_id.slice(0,8)+'...)'; ss.appendChild(o); });
+    if(sc) ss.value=sc;
+    var ms=document.getElementById('msgTarget'), mc=ms.value;
+    var seen={};
+    ms.innerHTML='<option value="">— select peer —</option>';
+    sess.forEach(function(s){ var p=s.peerA===ME?s.peerB:s.peerA; if(!seen[p]){ seen[p]=1; var o=document.createElement('option'); o.value=p; o.textContent=p; ms.appendChild(o); }});
+    if(mc) ms.value=mc;
+    var list=document.getElementById('sessList');
+    if(!sess.length){ list.innerHTML='<div class="empty">No sessions yet.</div>'; return; }
+    list.innerHTML=sess.map(function(s){
+      return '<div class="sess-item"><div class="sess-top"><div class="sess-peers">🔒 '+s.peerA+' ↔ '+s.peerB+'</div><span class="sess-time">'+s.created_at+'</span></div><div class="sess-key">Key: '+s.session_key+'</div><div class="sess-key">Token: '+s.token+'</div><div class="sess-key">ID: '+s.session_id+'</div><div class="sess-actions"><button class="btn btn-warn" style="padding:3px 10px;font-size:0.56rem" onclick="revokeSession(\''+s.session_id+'\')">REVOKE</button></div></div>';
+    }).join('');
+  });
+}
+
+function revokeSession(id) {
+  if(!confirm('Revoke this session?')) return;
+  fetch('/api/session/revoke',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:id})})
+    .then(function(r){return r.json();}).then(function(d){ showAlert(d.success?'alert-success':'alert-error',d.success?'Session revoked.':d.message); if(d.success) loadSessions(); });
+}
+
+function sendConnectRequest() {
+  var t=document.getElementById('connectTarget').value;
+  if(!t){showAlert('alert-error','Select a peer first.');return;}
+  markStep(5,true);
+  fetch('/api/connect/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to_user:t})})
+    .then(function(r){return r.json();}).then(function(d){
+      showAlert(d.success?'alert-success':'alert-error',d.message);
+      if(d.success){markStep(5,false);addFeed(now(),'[5] Request sent to '+t,'info');}
+      else markStep(5,false);
+    });
+}
+
+function respond(id,action) {
+  if(action==='accept'){markStep(5,false);markStep(6,true);addFeed(now(),'[5-6] Accepted — auth engine starting...','info');}
+  else addFeed(now(),'[5] Rejected.','warning');
+  fetch('/api/connect/respond',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({req_id:id,action:action})});
+}
+
+function loadMessages() {
+  fetch('/api/message/inbox').then(function(r){return r.json();}).then(function(msgs){ allMessages=msgs; renderMessages(); });
+}
+
+function renderMessages() {
+  var target=document.getElementById('msgTarget').value;
+  var area=document.getElementById('msgArea');
+  var rel=allMessages.filter(function(m){return(m.from_user===ME&&m.to_user===target)||(m.from_user===target&&m.to_user===ME);});
+  if(!rel.length){area.innerHTML='<div style="color:var(--muted);font-size:0.65rem">No messages with '+(target||'this peer')+' yet.</div>';return;}
+  area.innerHTML=rel.map(function(m){
+    var isMe=m.from_user===ME;
+    return '<div class="msg-row"><span class="msg-meta">['+(m.timestamp.length>8?m.timestamp.slice(11,19):m.timestamp)+'] </span><span class="'+(isMe?'msg-me':'msg-other')+'">'+escHtml(m.from_user)+': '+escHtml(m.content)+'</span></div>';
+  }).join('');
+  area.scrollTop=area.scrollHeight;
+}
+
+function sendMessage() {
+  var target=document.getElementById('msgTarget').value;
+  var content=document.getElementById('msgInput').value.trim();
+  if(!target){showAlert('alert-error','Select a peer to message.');return;}
+  if(!content)return;
+  fetch('/api/message/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to_user:target,content:content})})
+    .then(function(r){return r.json();}).then(function(d){
+      if(d.success){
+        document.getElementById('msgInput').value='';
+        allMessages.push({from_user:ME,to_user:target,content:content,timestamp:new Date().toISOString().replace('T',' ').slice(0,19)});
+        renderMessages(); markStep(9,false); addFeed(now(),'[9] Message sent to '+target,'success');
+      } else showAlert('alert-error',d.message);
+    });
+}
+
+function loadFiles() {
+  fetch('/api/file/list').then(function(r){return r.json();}).then(function(files){
+    var list=document.getElementById('fileList');
+    if(!files.length){list.innerHTML='<div class="empty">No files shared yet.</div>';return;}
+    list.innerHTML=files.map(function(f){
+      var isMe=f.uploader===ME;
+      var sz=f.size<1024?f.size+' B':f.size<1048576?(f.size/1024).toFixed(1)+' KB':(f.size/1048576).toFixed(1)+' MB';
+      return '<div class="file-item"><div class="file-icon">📄</div><div class="file-info"><div class="file-name">'+escHtml(f.filename)+'</div><div class="file-meta">'+sz+' · '+f.timestamp+' · AES-256-GCM</div><div class="file-hash">SHA256: '+f.sha256.slice(0,32)+'...</div></div><span class="uploader-tag">'+(isMe?'YOU':escHtml(f.uploader))+'</span>'+(!isMe?'<a href="/api/file/download/'+f.file_id+'" class="btn btn-green" style="padding:4px 10px;font-size:0.58rem;text-decoration:none" download>DOWNLOAD</a>':'')+'</div>';
+    }).join('');
+  });
+}
+
+function handleDrop(e){e.preventDefault();document.getElementById('uploadArea').classList.remove('drag');if(e.dataTransfer.files[0])uploadFile(e.dataTransfer.files[0]);}
+
+function uploadFile(file) {
+  if(!file)return;
+  var sessId=document.getElementById('sessSelector').value;
+  if(!sessId){showAlert('alert-error','Select a session for the upload first.');return;}
+  var wrap=document.getElementById('progressWrap'),bar=document.getElementById('progressBar');
+  wrap.style.display='block'; bar.style.width='0%';
+  var fd=new FormData(); fd.append('file',file); fd.append('session_id',sessId);
+  var xhr=new XMLHttpRequest(); xhr.open('POST','/api/file/upload');
+  xhr.upload.onprogress=function(e){if(e.lengthComputable)bar.style.width=Math.round(e.loaded/e.total*100)+'%';};
+  xhr.onload=function(){
+    wrap.style.display='none'; bar.style.width='0%'; document.getElementById('fileInput').value='';
+    try{var d=JSON.parse(xhr.responseText); if(d.success){showAlert('alert-success','Uploaded & AES-encrypted: '+file.name); addFeed(now(),'[9] '+file.name+' SHA256:'+d.sha256.slice(0,16)+'...','success'); markStep(9,false); loadFiles();}else showAlert('alert-error',d.message);}catch(ex){showAlert('alert-error','Upload failed.');}
+  };
+  xhr.onerror=function(){wrap.style.display='none';showAlert('alert-error','Upload error.');};
+  xhr.send(fd);
+}
+
+function addFeed(t,msg,lvl){var f=document.getElementById('feed'),d=document.createElement('div');d.className='fl';d.innerHTML='<span class="ft">'+t+'</span><span class="fm '+lvl+'">'+escHtml(msg)+'</span>';f.appendChild(d);f.scrollTop=f.scrollHeight;}
+function showAlert(cls,msg){var el=document.getElementById('topAlert');el.className='alert '+cls+' show';el.textContent=msg;setTimeout(function(){el.className='alert';},4500);}
+function now(){return new Date().toTimeString().slice(0,8);}
+function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function checkSession(){fetch('/api/session').then(function(r){return r.json();}).then(function(i){if(!i.logged_in){showAlert('alert-error','Session expired.');setTimeout(function(){window.location='/login';},1500);}}).catch(function(){});}
+function loadPeers(){fetch('/api/peers').then(function(r){return r.json();}).then(renderPeers);}
+function loadRequests(){fetch('/api/requests').then(function(r){return r.json();}).then(renderRequests);}
+
+setInterval(function(){fetch('/api/heartbeat',{method:'POST'}).then(function(r){return r.json();}).then(function(d){if(!d.ok)checkSession();});},HB_MS);
+setInterval(loadSessions,5000); setInterval(loadFiles,6000); setInterval(loadPeers,4000);
+setInterval(loadRequests,4000); setInterval(loadMessages,5000); setInterval(checkSession,30000);
+
+startSSE(); loadSessions(); loadFiles(); loadPeers(); loadRequests(); loadMessages(); checkSession();
+</script>
+{% endblock %}

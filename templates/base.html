@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>{% block title %}P2P Cloud Auth{% endblock %}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:      #020510;
+      --bg2:     #060d1e;
+      --panel:   #080f20;
+      --panel2:  #0b1428;
+      --border:  #0e1e3a;
+      --border2: #162b54;
+      --accent:  #4fa8f5;
+      --violet:  #8b7ff5;
+      --green:   #3dd68c;
+      --amber:   #f5a623;
+      --red:     #f56565;
+      --text:    #d4e1f7;
+      --text2:   #7a96c2;
+      --muted:   #2a3f62;
+      --sans:    'Inter', sans-serif;
+      --mono:    'JetBrains Mono', monospace;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 14px;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Canvas background (animated in JS per page) ── */
+    #bg-canvas {
+      position: fixed; inset: 0; z-index: 0;
+      pointer-events: none; opacity: 0.55;
+    }
+
+    /* ── Scan line overlay ── */
+    body::after {
+      content: '';
+      position: fixed; inset: 0; z-index: 1; pointer-events: none;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent 0px, transparent 3px,
+        rgba(0,0,0,0.07) 3px, rgba(0,0,0,0.07) 4px
+      );
+    }
+
+    /* ── NAV ── */
+    nav {
+      position: sticky; top: 0; z-index: 300;
+      background: rgba(2,5,16,0.88);
+      border-bottom: 1px solid var(--border2);
+      backdrop-filter: blur(20px) saturate(1.4);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 1.5rem; height: 56px;
+    }
+
+    .nav-brand {
+      font-family: var(--mono); font-size: 0.75rem; font-weight: 700;
+      color: var(--accent); text-decoration: none; letter-spacing: 0.08em;
+      display: flex; align-items: center; gap: 12px;
+    }
+
+    /* Animated hex logo */
+    .nav-logo { width: 30px; height: 30px; position: relative; flex-shrink: 0; }
+    .nav-logo svg { width: 100%; height: 100%; overflow: visible; }
+    .logo-ring1 { animation: logoSpin1  9s linear infinite; transform-origin: 15px 15px; }
+    .logo-ring2 { animation: logoSpin2 14s linear infinite; transform-origin: 15px 15px; }
+    .logo-core  { animation: logoPulse  2s ease-in-out infinite; }
+    @keyframes logoSpin1 { to { transform: rotate(360deg); } }
+    @keyframes logoSpin2 { to { transform: rotate(-360deg); } }
+    @keyframes logoPulse { 0%,100%{opacity:1;r:3} 50%{opacity:0.6;r:4.5} }
+
+    .nav-title-wrap { display: flex; flex-direction: column; gap: 1px; }
+    .nav-title-main { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.1em; }
+    .nav-title-sub  { font-size: 0.52rem; color: var(--text2); letter-spacing: 0.06em; font-weight: 400; }
+
+    .nav-links { display: flex; gap: 2px; align-items: center; flex-wrap: wrap; }
+    .nav-links a {
+      color: var(--text2); text-decoration: none;
+      font-family: var(--mono); font-size: 0.65rem;
+      padding: 5px 12px; border: 1px solid transparent; border-radius: 6px;
+      transition: all 0.18s; letter-spacing: 0.03em;
+    }
+    .nav-links a:hover { color: var(--accent); border-color: var(--border2); background: rgba(79,168,245,0.07); }
+
+    .nav-user {
+      font-family: var(--mono); font-size: 0.62rem; color: var(--green);
+      padding: 4px 12px; border: 1px solid rgba(61,214,140,0.25); border-radius: 20px;
+      background: rgba(61,214,140,0.07); display: flex; align-items: center; gap: 6px;
+    }
+    .nav-user-dot {
+      width: 5px; height: 5px; border-radius: 50%;
+      background: var(--green); box-shadow: 0 0 6px var(--green);
+      animation: statusPulse 2s ease-in-out infinite;
+    }
+    @keyframes statusPulse { 0%,100%{opacity:1;box-shadow:0 0 6px var(--green)} 50%{opacity:0.5;box-shadow:0 0 12px var(--green)} }
+
+    /* ── CONTAINER ── */
+    .container { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem; position: relative; z-index: 2; }
+
+    /* ── CARD ── */
+    .card {
+      background: var(--panel); border: 1px solid var(--border2);
+      border-radius: 14px; padding: 1.75rem; position: relative; overflow: hidden;
+    }
+    .card::before {
+      content: ''; position: absolute; top: 0; left: 20%; right: 20%; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      opacity: 0.6;
+    }
+
+    /* ── FORMS ── */
+    .form-group { margin-bottom: 1.25rem; }
+    .form-group label {
+      display: block; font-family: var(--mono);
+      font-size: 0.6rem; color: var(--text2); text-transform: uppercase;
+      letter-spacing: 0.12em; margin-bottom: 7px;
+    }
+    .form-group input {
+      width: 100%; background: rgba(0,0,0,0.4); border: 1px solid var(--border2);
+      border-radius: 8px; padding: 11px 14px; color: var(--text);
+      font-family: var(--mono); font-size: 0.8rem; outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .form-group input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(79,168,245,0.12), inset 0 0 12px rgba(79,168,245,0.04);
+    }
+
+    /* ── BUTTONS ── */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+      padding: 10px 24px; border: 1px solid var(--accent); border-radius: 8px;
+      background: rgba(79,168,245,0.08); color: var(--accent);
+      font-family: var(--mono); font-size: 0.66rem; font-weight: 500;
+      letter-spacing: 0.07em; text-transform: uppercase; cursor: pointer;
+      text-decoration: none; transition: all 0.18s; position: relative; overflow: hidden;
+    }
+    .btn::before {
+      content: ''; position: absolute; top: 0; left: -100%; width: 50%; height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent);
+      transition: left 0.4s;
+    }
+    .btn:hover::before { left: 150%; }
+    .btn:hover { box-shadow: 0 0 18px rgba(79,168,245,0.25); transform: translateY(-1px); }
+    .btn-solid  { background: rgba(79,168,245,0.18); }
+    .btn-solid:hover { background: rgba(79,168,245,0.28); }
+    .btn-green  { border-color: var(--green); color: var(--green); background: rgba(61,214,140,0.07); }
+    .btn-green:hover { box-shadow: 0 0 18px rgba(61,214,140,0.25); }
+    .btn-warn   { border-color: var(--red); color: var(--red); background: rgba(245,101,101,0.07); }
+    .btn-warn:hover { box-shadow: 0 0 18px rgba(245,101,101,0.2); }
+    .btn-full   { width: 100%; }
+    .btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+
+    /* ── ALERTS ── */
+    .alert {
+      padding: 10px 16px; border-radius: 8px; border-left: 3px solid;
+      font-family: var(--mono); font-size: 0.7rem;
+      margin: 0.75rem 0; display: none;
+    }
+    .alert.show { display: block; animation: alertIn 0.22s ease; }
+    @keyframes alertIn { from{opacity:0;transform:translateY(-5px)} to{opacity:1;transform:none} }
+    .alert-success { background: rgba(61,214,140,0.07);  border-color: var(--green); color: var(--green); }
+    .alert-error   { background: rgba(245,101,101,0.07); border-color: var(--red);   color: var(--red); }
+    .alert-info    { background: rgba(79,168,245,0.07);  border-color: var(--accent); color: var(--accent); }
+
+    /* ── SPINNER ── */
+    .spinner {
+      width: 15px; height: 15px;
+      border: 2px solid rgba(79,168,245,0.2); border-top-color: var(--accent);
+      border-radius: 50%; animation: spin 0.65s linear infinite; display: inline-block;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── UTILS ── */
+    .fade-in { animation: fadeUp 0.35s ease forwards; }
+    @keyframes fadeUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:none} }
+
+    .page-title {
+      font-family: var(--mono); font-size: 1.15rem; font-weight: 700;
+      color: var(--accent); letter-spacing: 0.05em; margin-bottom: 4px;
+    }
+    .page-sub {
+      font-family: var(--mono); font-size: 0.65rem;
+      color: var(--text2); margin-bottom: 1.75rem;
+    }
+
+    footer {
+      border-top: 1px solid var(--border); padding: 1rem 1.5rem;
+      text-align: center; font-family: var(--mono);
+      font-size: 0.58rem; color: var(--muted); margin-top: 3rem;
+      position: relative; z-index: 2; letter-spacing: 0.06em;
+    }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body>
+
+<canvas id="bg-canvas"></canvas>
+
+<nav>
+  <a class="nav-brand" href="/">
+    <div class="nav-logo">
+      <svg viewBox="0 0 30 30" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <g class="logo-ring1">
+          <polygon points="15,1 27,8 27,22 15,29 3,22 3,8"
+            fill="none" stroke="rgba(79,168,245,0.35)" stroke-width="0.8"/>
+        </g>
+        <g class="logo-ring2">
+          <polygon points="15,5 23,10 23,20 15,25 7,20 7,10"
+            fill="none" stroke="rgba(139,127,245,0.45)" stroke-width="0.8"/>
+        </g>
+        <circle class="logo-core" cx="15" cy="15" r="3" fill="#4fa8f5"/>
+        <line x1="15" y1="12" x2="15" y2="1"  stroke="rgba(79,168,245,0.3)" stroke-width="0.6"/>
+        <line x1="15" y1="18" x2="15" y2="29" stroke="rgba(79,168,245,0.3)" stroke-width="0.6"/>
+      </svg>
+    </div>
+    <div class="nav-title-wrap">
+      <span class="nav-title-main">P2P·AUTH</span>
+      <span class="nav-title-sub">ANONYMOUS IDENTITY SYSTEM</span>
+    </div>
+  </a>
+  <div class="nav-links">
+    {% if session.username %}
+      <a href="/peer">Peer Network</a>
+      <a href="/monitor">Monitor</a>
+      <span class="nav-user"><span class="nav-user-dot"></span>{{ session.username }}</span>
+      <a href="/logout" class="btn btn-warn" style="padding:4px 14px;font-size:0.58rem;border-radius:6px">Logout</a>
+    {% else %}
+      <a href="/register">Register</a>
+      <a href="/login">Login</a>
+    {% endif %}
+  </div>
+</nav>
+
+{% block content %}{% endblock %}
+
+<footer>
+  AUTHENTICATION &amp; KEY AGREEMENT · ANONYMOUS IDENTITY · P2P CLOUD
+  &nbsp;·&nbsp; ECC · ECDH · HKDF-SHA256 · AES-256-GCM
+</footer>
+
+<script>
+// ── Animated canvas background ──────────────────────────────────────────────
+(function() {
+  var canvas = document.getElementById('bg-canvas');
+  var ctx    = canvas.getContext('2d');
+  var nodes  = [], edges = [], particles = [];
+  var W, H;
+
+  function resize() {
+    W = canvas.width  = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // Create network nodes
+  function initNodes() {
+    nodes = [];
+    var count = Math.floor((W * H) / 28000);
+    count = Math.max(8, Math.min(count, 22));
+    for (var i = 0; i < count; i++) {
+      nodes.push({
+        x: Math.random() * W, y: Math.random() * H,
+        vx: (Math.random() - 0.5) * 0.18,
+        vy: (Math.random() - 0.5) * 0.18,
+        r: 1.5 + Math.random() * 2,
+        pulse: Math.random() * Math.PI * 2,
+        active: Math.random() > 0.6
+      });
+    }
+    // Floating data particles
+    particles = [];
+    for (var j = 0; j < 18; j++) {
+      spawnParticle();
+    }
+  }
+
+  function spawnParticle() {
+    // pick two random nodes to travel between
+    if (nodes.length < 2) return;
+    var a = Math.floor(Math.random() * nodes.length);
+    var b = Math.floor(Math.random() * nodes.length);
+    if (a === b) b = (a + 1) % nodes.length;
+    particles.push({ a: a, b: b, t: Math.random(), speed: 0.002 + Math.random() * 0.003, size: 1 + Math.random() });
+  }
+
+  function draw(ts) {
+    ctx.clearRect(0, 0, W, H);
+
+    // Update + draw edges
+    for (var i = 0; i < nodes.length; i++) {
+      var n = nodes[i];
+      n.x += n.vx; n.y += n.vy;
+      n.pulse += 0.025;
+      if (n.x < 0 || n.x > W) n.vx *= -1;
+      if (n.y < 0 || n.y > H) n.vy *= -1;
+
+      for (var j = i + 1; j < nodes.length; j++) {
+        var m = nodes[j];
+        var dx = m.x - n.x, dy = m.y - n.y;
+        var dist = Math.sqrt(dx*dx + dy*dy);
+        var maxDist = W * 0.22;
+        if (dist < maxDist) {
+          var alpha = (1 - dist / maxDist) * 0.18;
+          ctx.beginPath();
+          ctx.moveTo(n.x, n.y); ctx.lineTo(m.x, m.y);
+          ctx.strokeStyle = 'rgba(79,168,245,' + alpha + ')';
+          ctx.lineWidth = 0.5;
+          ctx.stroke();
+        }
+      }
+    }
+
+    // Draw nodes
+    for (var i = 0; i < nodes.length; i++) {
+      var n = nodes[i];
+      var pAlpha = 0.5 + 0.5 * Math.sin(n.pulse);
+      var color  = n.active ? '79,168,245' : '139,127,245';
+      // Outer glow ring
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, n.r * 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(' + color + ',' + (pAlpha * 0.12) + ')';
+      ctx.fill();
+      // Core dot
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(' + color + ',' + (pAlpha * 0.7 + 0.3) + ')';
+      ctx.fill();
+    }
+
+    // Draw travelling particles
+    for (var k = particles.length - 1; k >= 0; k--) {
+      var p = particles[k];
+      p.t += p.speed;
+      if (p.t >= 1) { particles.splice(k, 1); spawnParticle(); continue; }
+      var na = nodes[p.a], nb = nodes[p.b];
+      if (!na || !nb) { particles.splice(k, 1); continue; }
+      var px = na.x + (nb.x - na.x) * p.t;
+      var py = na.y + (nb.y - na.y) * p.t;
+      // Trail
+      var tx = na.x + (nb.x - na.x) * Math.max(0, p.t - 0.08);
+      var ty = na.y + (nb.y - na.y) * Math.max(0, p.t - 0.08);
+      var grad = ctx.createLinearGradient(tx, ty, px, py);
+      grad.addColorStop(0, 'rgba(61,214,140,0)');
+      grad.addColorStop(1, 'rgba(61,214,140,0.85)');
+      ctx.beginPath();
+      ctx.moveTo(tx, ty); ctx.lineTo(px, py);
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = p.size;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(px, py, p.size * 1.2, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(61,214,140,0.9)';
+      ctx.fill();
+    }
+
+    requestAnimationFrame(draw);
+  }
+
+  initNodes();
+  requestAnimationFrame(draw);
+})();
+</script>
+</body>
+</html>

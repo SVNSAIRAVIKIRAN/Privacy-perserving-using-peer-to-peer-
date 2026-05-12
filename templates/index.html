@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block title %}P2P Cloud Auth — Anonymous Identity{% endblock %}
+{% block content %}
+<style>
+  .hero {
+    min-height: calc(100vh - 58px);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    text-align: center; padding: 3rem 1.5rem;
+    position: relative; z-index: 1;
+    overflow: hidden;
+  }
+
+  /* Animated orbit rings */
+  .orbit-wrap {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    pointer-events: none; overflow: hidden;
+  }
+  .orbit {
+    position: absolute; border-radius: 50%; border: 1px solid;
+    animation: orbitSpin linear infinite;
+  }
+  .orbit-1 { width:500px; height:500px; border-color:rgba(56,189,248,0.06); animation-duration:40s; }
+  .orbit-2 { width:700px; height:700px; border-color:rgba(129,140,248,0.05); animation-duration:60s; animation-direction:reverse; }
+  .orbit-3 { width:900px; height:900px; border-color:rgba(52,211,153,0.04); animation-duration:80s; }
+  @keyframes orbitSpin { to { transform: rotate(360deg); } }
+
+  /* Particle dots on orbits */
+  .orbit::before {
+    content: ''; position: absolute; width: 5px; height: 5px;
+    border-radius: 50%; top: -2px; left: 50%; margin-left: -2px;
+  }
+  .orbit-1::before { background: rgba(56,189,248,0.6); box-shadow: 0 0 8px rgba(56,189,248,0.8); }
+  .orbit-2::before { background: rgba(129,140,248,0.6); box-shadow: 0 0 8px rgba(129,140,248,0.8); }
+  .orbit-3::before { background: rgba(52,211,153,0.6);  box-shadow: 0 0 8px rgba(52,211,153,0.8); }
+
+  /* Central glow */
+  .hero-glow {
+    position: absolute; width: 600px; height: 400px;
+    background: radial-gradient(ellipse, rgba(56,189,248,0.07) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .eyebrow {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.65rem;
+    color: var(--green); letter-spacing: 0.25em; text-transform: uppercase;
+    margin-bottom: 1.75rem;
+    animation: fadeIn 0.5s ease;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .eyebrow-line { width: 40px; height: 1px; background: var(--green); opacity: 0.5; }
+
+  .hero-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: clamp(1.5rem, 4.5vw, 3rem); font-weight: 700;
+    color: #f0f9ff; line-height: 1.15; max-width: 820px;
+    margin: 0 auto 1.25rem;
+    animation: fadeIn 0.5s ease 0.1s both;
+    letter-spacing: -0.01em;
+  }
+  .hero-title .hl { color: var(--accent); position: relative; }
+  .hero-title .hl2 { color: var(--accent2); }
+
+  .hero-desc {
+    font-size: 0.95rem; color: var(--text2); max-width: 500px;
+    margin: 0 auto 2.5rem; line-height: 1.75;
+    animation: fadeIn 0.5s ease 0.2s both;
+  }
+
+  .hero-actions {
+    display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center;
+    margin-bottom: 4rem;
+    animation: fadeIn 0.5s ease 0.3s both;
+  }
+
+  /* Crypto chip row */
+  .chips {
+    display: flex; gap: 0.6rem; flex-wrap: wrap; justify-content: center;
+    animation: fadeIn 0.5s ease 0.4s both;
+    margin-bottom: 3rem;
+  }
+  .chip {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.6rem;
+    padding: 4px 10px; border-radius: 20px; letter-spacing: 0.06em;
+    border: 1px solid; white-space: nowrap;
+  }
+  .chip-b { border-color: rgba(56,189,248,0.3); color: var(--accent); background: rgba(56,189,248,0.06); }
+  .chip-g { border-color: rgba(52,211,153,0.3); color: var(--green);  background: rgba(52,211,153,0.06); }
+  .chip-p { border-color: rgba(129,140,248,0.3); color: var(--accent2); background: rgba(129,140,248,0.06); }
+
+  /* Feature grid */
+  .features {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 1rem; max-width: 1000px; margin: 0 auto;
+    padding: 0 1.5rem 3rem;
+    animation: fadeIn 0.5s ease 0.5s both;
+    position: relative; z-index: 1;
+  }
+  .feat {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; padding: 1.25rem;
+    transition: border-color 0.25s, transform 0.25s, box-shadow 0.25s;
+    position: relative; overflow: hidden;
+  }
+  .feat::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    opacity: 0; transition: opacity 0.3s;
+  }
+  .feat:hover { border-color: var(--border2); transform: translateY(-4px); box-shadow: 0 12px 40px rgba(0,0,0,0.4); }
+  .feat:hover::before { opacity: 1; }
+  .feat-icon  { font-size: 1.5rem; margin-bottom: 0.75rem; display: block; }
+  .feat-title { font-family: 'JetBrains Mono', monospace; font-size: 0.68rem; color: var(--accent); font-weight: 500; margin-bottom: 0.5rem; letter-spacing: 0.04em; }
+  .feat-desc  { font-size: 0.82rem; color: var(--text2); line-height: 1.6; }
+</style>
+
+<section class="hero">
+  <div class="orbit-wrap">
+    <div class="orbit orbit-1"></div>
+    <div class="orbit orbit-2"></div>
+    <div class="orbit orbit-3"></div>
+  </div>
+  <div class="hero-glow"></div>
+
+  <div style="position:relative;z-index:2">
+    <p class="eyebrow"><span class="eyebrow-line"></span>Secure · Anonymous · Distributed<span class="eyebrow-line"></span></p>
+    <h1 class="hero-title">
+      AUTHENTICATION &amp; KEY AGREEMENT<br>
+      BASED ON <span class="hl">ANONYMOUS IDENTITY</span><br>
+      FOR <span class="hl2">P2P CLOUD</span>
+    </h1>
+    <p class="hero-desc">
+      Each browser is a real peer node. ECC key generation + ECDH secret exchange
+      + HKDF session keys — authenticated without revealing real identities.
+    </p>
+    <div class="hero-actions">
+      <a href="/register" class="btn btn-solid" style="padding:12px 36px;font-size:0.72rem">Create Account</a>
+      <a href="/login"    class="btn"           style="padding:12px 36px;font-size:0.72rem">Sign In</a>
+    </div>
+    <div class="chips">
+      <span class="chip chip-b">SECP256R1 ECC</span>
+      <span class="chip chip-b">ECDH</span>
+      <span class="chip chip-g">HKDF-SHA256</span>
+      <span class="chip chip-g">AES-256-GCM</span>
+      <span class="chip chip-p">bcrypt</span>
+      <span class="chip chip-p">Anonymous IDs</span>
+      <span class="chip chip-b">SSE Real-Time</span>
+    </div>
+  </div>
+</section>
+
+<div class="features">
+  <div class="feat">
+    <span class="feat-icon">🔑</span>
+    <div class="feat-title">ECC Key Generation</div>
+    <div class="feat-desc">SECP256R1 key pairs generated per peer for anonymous identity binding.</div>
+  </div>
+  <div class="feat">
+    <span class="feat-icon">🤝</span>
+    <div class="feat-title">ECDH Key Agreement</div>
+    <div class="feat-desc">Diffie-Hellman on elliptic curves — shared secret without transmitting it.</div>
+  </div>
+  <div class="feat">
+    <span class="feat-icon">🌐</span>
+    <div class="feat-title">Live Peer Network</div>
+    <div class="feat-desc">Each browser is a real peer node. Discover, connect, authenticate in real time.</div>
+  </div>
+  <div class="feat">
+    <span class="feat-icon">📡</span>
+    <div class="feat-title">Auth Monitor</div>
+    <div class="feat-desc">Faculty dashboard shows every authentication step live via SSE push.</div>
+  </div>
+  <div class="feat">
+    <span class="feat-icon">🛡️</span>
+    <div class="feat-title">Anonymous Identity</div>
+    <div class="feat-desc">SHA-256 hashed anonymous IDs hide real user identities across the network.</div>
+  </div>
+  <div class="feat">
+    <span class="feat-icon">🔒</span>
+    <div class="feat-title">AES-256-GCM Files</div>
+    <div class="feat-desc">Files encrypted with session-derived keys. Integrity verified with SHA-256.</div>
+  </div>
+</div>
+{% endblock %}

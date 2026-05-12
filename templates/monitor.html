@@ -1,0 +1,589 @@
+{% extends "base.html" %}
+{% block title %}Auth Monitor — P2P Cloud{% endblock %}
+{% block content %}
+<style>
+  .mon-layout {
+    display: grid; grid-template-columns: 1fr 380px;
+    align-items: start;
+    gap: 1.25rem; padding: 1.25rem; position: relative; z-index: 1;
+    min-height: calc(100vh - 58px);
+    height: calc(100vh - 58px);
+  }
+  @media(max-width:900px){ .mon-layout { grid-template-columns: 1fr; } }
+
+  /* ── Left column ── */
+  .left-col {
+    display: flex; flex-direction: column; gap: 0.75rem;
+    height: calc(100vh - 130px); min-height: 540px;
+  }
+  /* ── Terminal ── */
+  .terminal {
+    background: #02040a; border: 1px solid var(--border);
+    border-radius: 12px; overflow: hidden;
+    display: flex; flex-direction: column;
+    flex: 1; min-height: 0;
+    box-shadow: 0 0 40px rgba(0,0,0,0.6);
+  }
+  .term-head {
+    padding: 0.75rem 1.25rem; border-bottom: 1px solid var(--border);
+    background: rgba(0,0,0,0.6);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .term-title {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.68rem; color: var(--accent);
+    display: flex; align-items: center; gap: 10px; font-weight: 500;
+  }
+  /* Animated live indicator — 3 bars like an equaliser */
+  .live-eq {
+    display: flex; gap: 2px; align-items: flex-end; height: 14px;
+  }
+  .eq-bar {
+    width: 3px; background: var(--green); border-radius: 1px;
+    animation: eqAnim 0.8s ease-in-out infinite alternate;
+  }
+  .eq-bar:nth-child(1) { height: 6px;  animation-delay: 0s;    }
+  .eq-bar:nth-child(2) { height: 10px; animation-delay: 0.15s; }
+  .eq-bar:nth-child(3) { height: 14px; animation-delay: 0.3s;  }
+  .eq-bar:nth-child(4) { height: 8px;  animation-delay: 0.45s; }
+  .eq-bar:nth-child(5) { height: 5px;  animation-delay: 0.6s;  }
+  @keyframes eqAnim { from{transform:scaleY(0.3)} to{transform:scaleY(1)} }
+
+  .term-body {
+    flex: 1; overflow-y: auto; padding: 0.85rem 1.25rem;
+    font-family: 'JetBrains Mono', monospace; font-size: 0.68rem; line-height: 1.9;
+    scroll-behavior: smooth;
+  }
+  /* Custom scrollbar */
+  .term-body::-webkit-scrollbar { width: 4px; }
+  .term-body::-webkit-scrollbar-track { background: transparent; }
+  .term-body::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  .log-row {
+    display: grid; grid-template-columns: 100px 26px 200px 1fr;
+    gap: 10px; padding: 3px 0;
+    border-bottom: 1px solid rgba(17,34,64,0.5);
+    animation: logIn 0.25s ease;
+  }
+  @keyframes logIn { from{opacity:0;transform:translateX(-8px)} to{opacity:1;transform:none} }
+  .log-row:last-child { border-bottom: none; }
+  .lt  { color: var(--muted); font-size: 0.62rem; }
+  .ls  { font-weight: 700; text-align: center; font-size: 0.58rem; }
+  .le  { font-weight: 600; }
+  .ld  { color: var(--text2); }
+  .log-row.success .ls,.log-row.success .le { color: var(--green); }
+  .log-row.success .ld { color: #6ee7b7; }
+  .log-row.info    .ls,.log-row.info    .le { color: var(--accent); }
+  .log-row.info    .ld { color: var(--text); }
+  .log-row.warning .ls,.log-row.warning .le { color: var(--amber); }
+  .log-row.warning .ld { color: #d4a04a; }
+  .log-row.error   .ls,.log-row.error   .le { color: var(--warn); }
+  .log-row.error   .ld { color: #fca5a5; }
+
+  /* Protocol event badge — applied via JS on SSE rows; static rows use data-event attr */
+  .le { font-weight: 600; }
+  .le.badge {
+    display: inline-block; padding: 1px 6px; border-radius: 4px;
+    font-size: 0.58rem; letter-spacing: 0.04em; font-weight: 700;
+  }
+  .badge-login    { background: rgba(56,189,248,0.15); color: #38bdf8; border: 1px solid rgba(56,189,248,0.3); }
+  .badge-discovery{ background: rgba(168,85,247,0.15); color: #c084fc; border: 1px solid rgba(168,85,247,0.3); }
+  .badge-auth     { background: rgba(251,191,36,0.12); color: #fbbf24; border: 1px solid rgba(251,191,36,0.25); }
+  .badge-ecdh     { background: rgba(52,211,153,0.12); color: #34d399; border: 1px solid rgba(52,211,153,0.3); }
+  .badge-session  { background: rgba(99,102,241,0.15); color: #a5b4fc; border: 1px solid rgba(99,102,241,0.3); }
+  .badge-channel  { background: rgba(52,211,153,0.2);  color: #6ee7b7; border: 1px solid rgba(52,211,153,0.5); box-shadow: 0 0 6px rgba(52,211,153,0.2); }
+  .badge-ids      { background: rgba(239,68,68,0.15);  color: #f87171; border: 1px solid rgba(239,68,68,0.4);  box-shadow: 0 0 8px rgba(239,68,68,0.2); }
+
+  /* Filter bar */
+  .term-filter {
+    display: flex; gap: 6px; padding: 6px 1.25rem;
+    border-bottom: 1px solid var(--border); background: rgba(0,0,0,0.3);
+    flex-wrap: wrap;
+  }
+  .fbtn {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.55rem;
+    padding: 2px 8px; border-radius: 4px; border: 1px solid var(--border2);
+    background: transparent; color: var(--muted); cursor: pointer;
+    transition: all 0.15s;
+  }
+  .fbtn:hover, .fbtn.active { background: rgba(56,189,248,0.12); color: var(--accent); border-color: var(--accent); }
+
+  /* ══ RIGHT PANEL ══ */
+  .right {
+    display: flex; flex-direction: column; gap: 0.6rem;
+    overflow-y: auto; max-height: calc(100vh - 130px);
+    min-height: 540px; width: 100%; min-width: 0;
+  }
+  .right::-webkit-scrollbar { width: 3px; }
+  .right::-webkit-scrollbar-thumb { background: rgba(56,189,248,0.2); border-radius: 2px; }
+
+  /* Card shell */
+  .rcard {
+    background: rgba(4,9,20,0.85);
+    border: 1px solid rgba(56,189,248,0.12);
+    border-radius: 10px;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 2px 20px rgba(0,0,0,0.5), inset 0 1px 0 rgba(56,189,248,0.06);
+    min-width: 0;
+  }
+  .rcard-head {
+    padding: 0.45rem 0.75rem;
+    border-bottom: 1px solid rgba(56,189,248,0.08);
+    background: rgba(56,189,248,0.04);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .rcard-title {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.56rem;
+    color: rgba(56,189,248,0.7); letter-spacing: 0.1em; text-transform: uppercase; font-weight: 600;
+    display: flex; align-items: center; gap: 5px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .rcard-title::before {
+    content: ''; width: 4px; height: 4px; border-radius: 50%;
+    background: var(--accent); box-shadow: 0 0 5px var(--accent);
+    flex-shrink: 0;
+  }
+
+  /* ── Stat bars ── */
+  .stat-bars { padding: 0.5rem 0.75rem; display: flex; flex-direction: column; gap: 0.45rem; }
+  .sbar-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .sbar-label {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.54rem;
+    color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em;
+    width: 78px; flex-shrink: 0;
+  }
+  .sbar-track {
+    flex: 1; height: 3px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden; min-width: 0;
+  }
+  .sbar-fill {
+    height: 100%; border-radius: 2px; transition: width 0.5s ease;
+    background: linear-gradient(90deg, rgba(56,189,248,0.6), rgba(56,189,248,1));
+  }
+  .sbar-fill.green { background: linear-gradient(90deg, rgba(52,211,153,0.6), rgba(52,211,153,1)); }
+  .sbar-val {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.68rem; font-weight: 700;
+    color: var(--accent); width: 26px; text-align: right; flex-shrink: 0;
+  }
+  .sbar-val.green { color: var(--green); }
+  .cv.bump { animation: numBump 0.3s ease; }
+  @keyframes numBump { 0%{transform:scale(1)} 50%{transform:scale(1.25);color:#fff} 100%{transform:scale(1)} }
+
+  /* ── Crypto waveform ── */
+  .wave-wrap { padding: 0.5rem 0.65rem 0.35rem; }
+  #waveCanvas { width: 100%; height: 44px; display: block; }
+  .crypto-specs { padding: 0 0 0.5rem; }
+  .spec-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 5px 0.75rem; border-top: 1px solid rgba(56,189,248,0.06);
+    font-family: 'JetBrains Mono', monospace; font-size: 0.56rem;
+    min-width: 0; gap: 6px;
+  }
+  .spec-k { color: rgba(148,163,184,0.7); white-space: nowrap; }
+  .spec-v { color: var(--accent); font-weight: 600; white-space: nowrap; }
+  .spec-v.ok { color: var(--green); }
+
+  /* ── 9-step vertical timeline ── */
+  .timeline {
+    padding: 0.45rem 0.75rem 0.45rem 0.75rem; position: relative;
+    max-height: 320px; overflow-y: auto;
+  }
+  .timeline::-webkit-scrollbar { width: 3px; }
+  .timeline::-webkit-scrollbar-track { background: transparent; }
+  .timeline::-webkit-scrollbar-thumb { background: rgba(56,189,248,0.2); border-radius: 2px; }
+  .timeline::before {
+    content: ''; position: absolute; left: 1.5rem; top: 0.45rem; bottom: 0.45rem;
+    width: 1px; background: rgba(56,189,248,0.1);
+  }
+  .tl-step {
+    display: flex; align-items: center; gap: 8px;
+    padding: 4px 0; position: relative;
+    font-family: 'JetBrains Mono', monospace;
+    transition: all 0.3s ease; min-width: 0;
+  }
+  .tl-node {
+    width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
+    border: 1px solid rgba(56,189,248,0.2); background: rgba(4,9,20,0.9);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.46rem; font-weight: 700; color: var(--muted);
+    position: relative; z-index: 1; transition: all 0.3s ease;
+  }
+  .tl-step.done .tl-node {
+    border-color: rgba(52,211,153,0.6); background: rgba(52,211,153,0.1);
+    color: var(--green); box-shadow: 0 0 6px rgba(52,211,153,0.25);
+  }
+  .tl-step.active .tl-node {
+    border-color: rgba(56,189,248,0.7); background: rgba(56,189,248,0.1);
+    color: var(--accent); animation: nodePulse 1.2s ease infinite;
+  }
+  @keyframes nodePulse { 0%,100%{box-shadow:0 0 6px rgba(56,189,248,0.3)} 50%{box-shadow:0 0 14px rgba(56,189,248,0.7)} }
+  .tl-body { flex: 1; min-width: 0; }
+  .tl-name {
+    color: rgba(148,163,184,0.5); font-size: 0.58rem; font-weight: 500;
+    text-transform: uppercase; letter-spacing: 0.03em;
+    transition: color 0.3s; line-height: 1.2;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .tl-step.done   .tl-name { color: #6ee7b7; }
+  .tl-step.active .tl-name { color: #7dd3fc; }
+  .tl-sub {
+    font-size: 0.46rem; color: var(--muted); margin-top: 0;
+    opacity: 0; transition: opacity 0.3s; line-height: 1.1;
+  }
+  .tl-step.done   .tl-sub { opacity: 1; color: rgba(52,211,153,0.5); }
+  .tl-step.active .tl-sub { opacity: 1; color: rgba(56,189,248,0.5); }
+  .tl-check { font-size: 0.55rem; opacity: 0; transition: opacity 0.3s; flex-shrink: 0; }
+  .tl-step.done   .tl-check { opacity: 1; color: var(--green); }
+  .tl-step.active .tl-check { opacity: 1; color: var(--accent); animation: tickPulse 1s infinite; }
+  @keyframes tickPulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  /* ── Active sessions ── */
+  .sess-list { padding: 0.25rem 0; max-height: 150px; overflow-y: auto; }
+  .sess-list::-webkit-scrollbar { width: 3px; }
+  .sess-list::-webkit-scrollbar-thumb { background: rgba(56,189,248,0.2); border-radius: 2px; }
+  .sess-row {
+    padding: 0.45rem 0.75rem; border-top: 1px solid rgba(56,189,248,0.06);
+    animation: logIn 0.3s ease; min-width: 0;
+  }
+  .sess-peers { font-family: 'JetBrains Mono', monospace; font-size: 0.58rem; color: var(--green); font-weight: 500; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sess-key   { font-family: 'JetBrains Mono', monospace; font-size: 0.5rem; color: rgba(148,163,184,0.5); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sess-time  { font-family: 'JetBrains Mono', monospace; font-size: 0.46rem; color: var(--muted); margin-top: 1px; }
+  .empty { font-family: 'JetBrains Mono', monospace; font-size: 0.58rem; color: var(--muted); padding: 0.75rem; text-align: center; opacity: 0.6; }
+</style>
+
+<div class="mon-layout">
+  <!-- Left column: terminal + active sessions -->
+  <div class="left-col">
+    <div class="terminal">
+    <div class="term-head">
+      <div class="term-title">
+        <div class="live-eq">
+          <div class="eq-bar"></div><div class="eq-bar"></div>
+          <div class="eq-bar"></div><div class="eq-bar"></div>
+          <div class="eq-bar"></div>
+        </div>
+        AUTH MONITOR — LIVE FEED
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span id="entryCnt" style="font-family:'JetBrains Mono',monospace;font-size:0.6rem;color:var(--muted)">0 entries</span>
+        <button class="btn" style="padding:4px 12px;font-size:0.58rem" onclick="clearLog()">CLEAR</button>
+      </div>
+    </div>
+    <div class="term-filter">
+      <button class="fbtn active" onclick="setFilter('all',this)">ALL</button>
+      <button class="fbtn" onclick="setFilter('USER_LOGIN',this)">USER_LOGIN</button>
+      <button class="fbtn" onclick="setFilter('PEER_DISCOVERY',this)">PEER_DISCOVERY</button>
+      <button class="fbtn" onclick="setFilter('AUTH_REQUEST',this)">AUTH_REQUEST</button>
+      <button class="fbtn" onclick="setFilter('ECDH_KEY_EXCHANGE',this)">ECDH_KEY_EXCHANGE</button>
+      <button class="fbtn" onclick="setFilter('SESSION_KEY_CREATED',this)">SESSION_KEY_CREATED</button>
+      <button class="fbtn" onclick="setFilter('SECURE_CHANNEL_ESTABLISHED',this)">SECURE_CHANNEL</button>
+      <button class="fbtn" onclick="setFilter('error',this)" style="color:var(--warn);border-color:rgba(239,68,68,0.3)">ERRORS</button>
+      <button class="fbtn" onclick="setFilter('IDS ALERT',this)" style="color:#f87171;border-color:rgba(239,68,68,0.4)">IDS ALERTS</button>
+    </div>
+    <div class="term-body" id="termBody">
+      {% for log in logs %}
+      <div class="log-row {{ log.level }}" data-event="{{ log.event }}">
+        <span class="lt">{{ log.time[-8:] }}</span>
+        <span class="ls">{{ log.step }}</span>
+        <span class="le">{{ log.event }}</span>
+        <span class="ld">{{ log.detail }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div><!-- end .terminal -->
+
+    <!-- Active sessions (below live feed) -->
+    <div class="rcard">
+      <div class="rcard-head">
+        <span class="rcard-title">Active Sessions</span>
+        <span id="sessCountBadge" style="font-family:'JetBrains Mono',monospace;font-size:0.5rem;color:var(--green)">0 active</span>
+      </div>
+      <div class="sess-list" id="sessList"><div class="empty">No sessions yet.</div></div>
+    </div>
+
+  </div><!-- end .left-col -->
+
+  <!-- Right panel -->
+  <div class="right">
+
+    <!-- Stat bars -->
+    <div class="rcard">
+      <div class="rcard-head">
+        <span class="rcard-title">System Stats</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:0.5rem;color:rgba(56,189,248,0.4)" id="statsTs">--:--:--</span>
+      </div>
+      <div class="stat-bars">
+        <div class="sbar-row">
+          <span class="sbar-label">Peers Online</span>
+          <div class="sbar-track"><div class="sbar-fill" id="barPeers" style="width:0%"></div></div>
+          <span class="sbar-val cv" id="cPeers">0</span>
+        </div>
+        <div class="sbar-row">
+          <span class="sbar-label">Sessions</span>
+          <div class="sbar-track"><div class="sbar-fill green" id="barSess" style="width:0%"></div></div>
+          <span class="sbar-val cv green" id="cSess">0</span>
+        </div>
+        <div class="sbar-row">
+          <span class="sbar-label">Log Entries</span>
+          <div class="sbar-track"><div class="sbar-fill" id="barLogs" style="width:0%"></div></div>
+          <span class="sbar-val cv" id="cLogs">{{ logs|length }}</span>
+        </div>
+        <div class="sbar-row">
+          <span class="sbar-label">Auth OK</span>
+          <div class="sbar-track"><div class="sbar-fill green" id="barAuth" style="width:0%"></div></div>
+          <span class="sbar-val cv green" id="cAuth">0</span>
+        </div>
+      </div>
+    </div>
+
+
+
+    <!-- Crypto activity -->
+    <div class="rcard">
+      <div class="rcard-head">
+        <span class="rcard-title">Crypto Activity</span>
+      </div>
+      <div class="wave-wrap">
+        <canvas id="waveCanvas"></canvas>
+      </div>
+      <div class="crypto-specs">
+        <div class="spec-row"><span class="spec-k">Algorithm</span><span class="spec-v">SECP256R1 + ECDH</span></div>
+        <div class="spec-row"><span class="spec-k">Key Derivation</span><span class="spec-v">HKDF-SHA256</span></div>
+        <div class="spec-row"><span class="spec-k">Encryption</span><span class="spec-v">AES-256-GCM</span></div>
+        <div class="spec-row"><span class="spec-k">Passwords</span><span class="spec-v">bcrypt (12)</span></div>
+        <div class="spec-row"><span class="spec-k">Session TTL</span><span class="spec-v ok">1 hour</span></div>
+      </div>
+    </div>
+
+    <!-- 9-step vertical timeline -->
+    <div class="rcard">
+      <div class="rcard-head">
+        <span class="rcard-title">Protocol Pipeline</span>
+        <span id="pipeProgress" style="font-family:'JetBrains Mono',monospace;font-size:0.5rem;color:var(--muted)">0 / 9</span>
+      </div>
+      <div class="timeline">
+        <div class="tl-step" data-step="1"><div class="tl-node">01</div><div class="tl-body"><div class="tl-name">User Registration</div><div class="tl-sub">bcrypt · anon-id</div></div><span class="tl-check">✓</span></div>
+        <div class="tl-step" data-step="2"><div class="tl-node">02</div><div class="tl-body"><div class="tl-name">Peer Login</div><div class="tl-sub">verified · joined</div></div><span class="tl-check">✓</span></div>
+        <div class="tl-step" data-step="3"><div class="tl-node">03</div><div class="tl-body"><div class="tl-name">Anonymous Identity</div><div class="tl-sub">SHA-256 · masked</div></div><span class="tl-check">✓</span></div>
+        <div class="tl-step" data-step="4"><div class="tl-node">04</div><div class="tl-body"><div class="tl-name">Peer Discovery</div><div class="tl-sub">broadcast · listed</div></div><span class="tl-check">✓</span></div>
+        <div class="tl-step" data-step="5"><div class="tl-node">05</div><div class="tl-body"><div class="tl-name">Connection Request</div><div class="tl-sub">dispatched · pending</div></div><span class="tl-check">✓</span></div>
+        <div class="tl-step" data-step="6"><div class="tl-node">06</div><div class="tl-body"><div class="tl-name">ECDH Key Exchange</div><div class="tl-sub">SECP256R1 · shared</div></div><span class="tl-check">✓</span></div>
+        <div class="tl-step" data-step="7"><div class="tl-node">07</div><div class="tl-body"><div class="tl-name">Token Validation</div><div class="tl-sub">nonce · SHA-256</div></div><span class="tl-check">✓</span></div>
+        <div class="tl-step" data-step="8"><div class="tl-node">08</div><div class="tl-body"><div class="tl-name">Session Key</div><div class="tl-sub">HKDF · AES-256</div></div><span class="tl-check">✓</span></div>
+        <div class="tl-step" data-step="9"><div class="tl-node">09</div><div class="tl-body"><div class="tl-name">P2P Communication</div><div class="tl-sub">E2E · encrypted</div></div><span class="tl-check">✓</span></div>
+      </div>
+    </div>
+
+
+  </div>
+</div>
+
+<script>
+var HUB_URL = window.location.origin;
+var logCount = {{ logs|length }};
+var authCount = 0;
+var peerNodes = [];  // kept for peer tracking
+
+// ── Animation 3: Crypto waveform ──────────────────────────────────────────────
+var wCanvas = document.getElementById('waveCanvas');
+var wCtx = wCanvas.getContext('2d');
+wCanvas.width  = wCanvas.offsetWidth;
+wCanvas.height = 50;
+var waveData = [];
+var waveActivity = 0;
+
+function addWaveSpike() {
+  waveActivity = 1.0;
+}
+
+function drawWave() {
+  var W = wCanvas.width, H = wCanvas.height;
+  wCtx.clearRect(0, 0, W, H);
+
+  waveData.push(waveActivity * (0.5 + 0.5 * Math.random()));
+  waveActivity *= 0.88;
+  if (waveData.length > W) waveData.shift();
+
+  // Baseline noise
+  var t = Date.now() / 1000;
+  wCtx.beginPath();
+  for (var i = 0; i < waveData.length; i++) {
+    var x = i;
+    var noise = Math.sin(i * 0.15 + t * 2) * 2 + Math.sin(i * 0.07 + t) * 1.5;
+    var spike = waveData[i] * (H * 0.42);
+    var y = H/2 - noise - spike;
+    if (i === 0) wCtx.moveTo(x, y);
+    else wCtx.lineTo(x, y);
+  }
+  wCtx.strokeStyle = 'rgba(56,189,248,0.7)';
+  wCtx.lineWidth = 1.5;
+  wCtx.stroke();
+
+  // Fill below
+  wCtx.lineTo(waveData.length - 1, H);
+  wCtx.lineTo(0, H);
+  wCtx.closePath();
+  wCtx.fillStyle = 'rgba(56,189,248,0.05)';
+  wCtx.fill();
+
+  requestAnimationFrame(drawWave);
+}
+drawWave();
+
+// ── SSE ───────────────────────────────────────────────────────────────────────
+function startSSE() {
+  var es = new EventSource('/hub/stream');
+  es.addEventListener('peers',   function(e){ updatePeers(JSON.parse(e.data)); });
+  es.addEventListener('monitor', function(e){ appendLog(JSON.parse(e.data)); addWaveSpike(); });
+  es.onerror = function(){ es.close(); setTimeout(startSSE, 3000); };
+}
+
+function appendLog(d) {
+  var body = document.getElementById('termBody');
+  var row = document.createElement('div');
+  row.className = 'log-row ' + d.level;
+  row.setAttribute('data-event', d.event);
+  var badgeClass = getBadgeClass(d.event);
+  var timeShort = d.time.length > 8 ? d.time.slice(-8) : d.time;
+  row.innerHTML =
+    '<span class="lt">' + timeShort + '</span>' +
+    '<span class="ls">' + d.step + '</span>' +
+    '<span class="le badge ' + badgeClass + '">' + d.event + '</span>' +
+    '<span class="ld">' + d.detail + '</span>';
+  body.appendChild(row);
+
+  // Apply current filter
+  if (activeFilter !== 'all' && activeFilter !== 'error') {
+    row.style.display = (d.event === activeFilter) ? '' : 'none';
+  } else if (activeFilter === 'error') {
+    row.style.display = (d.level === 'error') ? '' : 'none';
+  }
+
+  body.scrollTop = body.scrollHeight;
+
+  logCount++;
+  document.getElementById('entryCnt').textContent = logCount + ' entries';
+  bumpCounter('cLogs', logCount);
+
+  // Update pipeline
+  var stepEl = document.querySelector('.tl-step[data-step="' + d.step + '"]');
+  if (stepEl) {
+    if (d.level === 'success') {
+      stepEl.classList.remove('active'); stepEl.classList.add('done');
+      stepEl.querySelector('.tl-check').textContent = '✓';
+      stepEl.querySelector('.tl-node').textContent = '0' + d.step;
+      // update progress counter
+      var doneCount = document.querySelectorAll('.tl-step.done').length;
+      var pp = document.getElementById('pipeProgress');
+      if (pp) pp.textContent = doneCount + ' / 9';
+    } else if (!stepEl.classList.contains('done')) {
+      stepEl.classList.add('active');
+      stepEl.querySelector('.tl-check').textContent = '●';
+    }
+  }
+  if (d.level === 'success' && (d.event.indexOf('ECDH') !== -1 || d.event.indexOf('AUTH') !== -1 || d.event.indexOf('SESSION') !== -1)) {
+    authCount++;
+    bumpCounter('cAuth', authCount);
+  }
+}
+
+var BADGE_MAP = {
+  'USER_LOGIN': 'badge-login', 'PEER LOGIN': 'badge-login',
+  'PEER_DISCOVERY': 'badge-discovery', 'PEER DISCOVERY': 'badge-discovery',
+  'AUTH_REQUEST': 'badge-auth', 'CONN REQUEST': 'badge-auth',
+  'ECDH_KEY_EXCHANGE': 'badge-ecdh', 'ECDH VERIFIED': 'badge-ecdh', 'KEY EXCHANGE': 'badge-ecdh',
+  'SESSION_KEY_CREATED': 'badge-session', 'SESSION KEY': 'badge-session', 'SESSION ACTIVE': 'badge-session',
+  'SECURE_CHANNEL_ESTABLISHED': 'badge-channel', 'P2P CHANNEL OPEN': 'badge-channel',
+  'IDS ALERT': 'badge-ids',
+};
+function getBadgeClass(event) {
+  return BADGE_MAP[event] || '';
+}
+
+var activeFilter = 'all';
+function setFilter(f, btn) {
+  activeFilter = f;
+  document.querySelectorAll('.fbtn').forEach(function(b){ b.classList.remove('active'); });
+  btn.classList.add('active');
+  document.querySelectorAll('#termBody .log-row').forEach(function(row){
+    if (f === 'all') { row.style.display = ''; }
+    else if (f === 'error') { row.style.display = (row.classList.contains('error')) ? '' : 'none'; }
+    else { row.style.display = (row.getAttribute('data-event') === f) ? '' : 'none'; }
+  });
+}
+
+function bumpCounter(id, val) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = val;
+  el.classList.remove('bump');
+  void el.offsetWidth;
+  el.classList.add('bump');
+  // Update matching bar
+  var barMap = { cPeers: 'barPeers', cSess: 'barSess', cLogs: 'barLogs', cAuth: 'barAuth' };
+  if (barMap[id]) {
+    var maxMap = { cPeers: 20, cSess: 10, cLogs: 500, cAuth: 50 };
+    var pct = Math.min(100, (val / (maxMap[id] || 100)) * 100);
+    var bar = document.getElementById(barMap[id]);
+    if (bar) bar.style.width = pct + '%';
+  }
+}
+
+function updatePeers(peers) {
+  var online = peers.filter(function(p){ return p.status === 'online'; });
+  bumpCounter('cPeers', online.length);
+}
+
+function loadSessions() {
+  fetch('/hub/sessions/all').then(function(r){return r.json();}).then(function(sess){
+    bumpCounter('cSess', sess.length);
+    var badge = document.getElementById('sessCountBadge');
+    if (badge) badge.textContent = sess.length + ' active';
+    var list = document.getElementById('sessList');
+    if (!sess.length) { list.innerHTML='<div class="empty">No sessions yet.</div>'; return; }
+    list.innerHTML = sess.map(function(s){
+      return '<div class="sess-row">' +
+        '<div class="sess-peers">⇄ ' + s.peerA + ' ↔ ' + s.peerB + '</div>' +
+        '<div class="sess-key">🔑 ' + s.session_key + '</div>' +
+        '<div class="sess-time">' + s.created_at + '</div>' +
+        '</div>';
+    }).join('');
+  });
+}
+
+function clearLog() {
+  document.getElementById('termBody').innerHTML = '<div style="color:var(--muted);padding:0.5rem 0;font-family:\'JetBrains Mono\',monospace;font-size:0.68rem">// display cleared</div>';
+  logCount = 0;
+  document.getElementById('entryCnt').textContent = '0 entries';
+}
+
+function loadPeers() {
+  fetch('/hub/peers').then(function(r){return r.json();}).then(updatePeers);
+}
+
+setInterval(loadSessions, 4000);
+setInterval(loadPeers, 4000);
+setInterval(function(){
+  var ts = document.getElementById('statsTs');
+  if (ts) ts.textContent = new Date().toTimeString().slice(0,8);
+}, 1000);
+startSSE();
+loadSessions();
+loadPeers();
+// Scroll terminal to bottom on load
+window.addEventListener('load', function(){
+  var b = document.getElementById('termBody');
+  b.scrollTop = b.scrollHeight;
+  // Apply badge classes to server-rendered rows
+  document.querySelectorAll('#termBody .log-row').forEach(function(row){
+    var ev = row.getAttribute('data-event');
+    var le = row.querySelector('.le');
+    if (le && ev) {
+      var bc = getBadgeClass(ev);
+      if (bc) { le.classList.add('badge', bc); }
+    }
+  });
+  logCount = document.querySelectorAll('.log-row').length;
+  document.getElementById('entryCnt').textContent = logCount + ' entries';
+  document.getElementById('cLogs').textContent = logCount;
+});
+</script>
+{% endblock %}
